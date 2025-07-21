@@ -1,41 +1,50 @@
 import fitz  # PyMuPDF
-import re
+import pytesseract
+from pdf2image import convert_from_path
+from PIL import Image, ImageFilter, ImageEnhance
+
+from .llm_utils import generate_resume_json_and_suggestions
+
 
 def extract_text_from_pdf(file_path):
+    """Extracts text from a PDF, falls back to OCR if text is not extractable."""
     text = ""
     doc = fitz.open(file_path)
+
+    # Try extracting text from pages directly
     for page in doc:
-        text += page.get_text()
-    return text
+        page_text = page.get_text("text")
+        if page_text.strip():
+            text += page_text + "\n"
 
-def extract_name(text):
-    lines = text.strip().split('\n')
-    return lines[0] if lines else "Unknown"
+    # Fallback: OCR if no extractable text found
+    if not text.strip():
+        print("📸 No extractable text found, falling back to OCR...")
+        images = convert_from_path(file_path)
+        for img in images:
+            preprocessed = preprocess_image(img)
+            text += pytesseract.image_to_string(preprocessed) + "\n"
 
-def extract_email(text):
-    match = re.search(r'[\w\.-]+@[\w\.-]+', text)
-    return match.group(0) if match else "Not found"
+    print("🔍 Extracted Resume Text (first 1000 chars):")
+    print(text[:1000])
+    return text.strip()
 
-def extract_phone(text):
-    match = re.search(r'(\+?\d{1,4}[\s\-]?)?(\(?\d{3,4}\)?[\s\-]?)?\d{3,4}[\s\-]?\d{3,4}', text)
-    return match.group(0) if match else "Not found"
 
-def extract_skills(text):
-    # Very basic; we’ll improve later with NLP or a skill list match
-    skill_keywords = ['java', 'react', 'python', 'sql', 'figma', 'spring boot', 'machine learning',
-                      'tensorflow', 'node.js', 'product management', 'agile']
-    
-    found_skills = []
-    text_lower = text.lower()
+def preprocess_image(img):
+    """Preprocess the image to improve OCR accuracy."""
+    img = img.convert("L")  # Grayscale
+    img = img.filter(ImageFilter.MedianFilter())
+    img = ImageEnhance.Contrast(img).enhance(2)
+    img = img.point(lambda p: 255 if p > 180 else 0)
+    return img
 
-    for skill in skill_keywords:
-        if skill.lower() in text_lower:
-            found_skills.append(skill.title())
 
-    return list(set(found_skills[:10]))  # max 10 for simplicity
-
-def extract_soft_skills(text):
-    # Dummy soft skills matcher (improvable later)
-    soft_keywords = ['team player', 'communication', 'leadership', 'adaptability', 'problem solving', 'hardworking']
-    found = [s.title() for s in soft_keywords if s in text.lower()]
-    return list(set(found[:5]))
+def parse_resume(file_path):
+    """Main function to extract structured resume data from a PDF file."""
+    text = extract_text_from_pdf(file_path)
+    try:
+        result_json = generate_resume_json_and_suggestions(text)
+    except Exception as e:
+        print("🔥 LLM Extraction Error:", e)
+        result_json = {"error": "Failed to extract resume information"}
+    return result_json

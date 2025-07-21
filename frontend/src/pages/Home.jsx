@@ -13,15 +13,71 @@ function Home() {
   const [data, setData] = useState(null);
   const [activeTab, setActiveTab] = useState("upload"); // "upload" or "history"
 
-  const handleUpload = (uploadedFile) => {
-    setFile(uploadedFile);
-    setLoading(true);
+  const handleUpload = async (uploadedFile) => {
+  setFile(uploadedFile);
+  setLoading(true);
 
-    setTimeout(() => {
-      setData(mockResponse());
-      setLoading(false);
-    }, 2000);
-  };
+  const formData = new FormData();
+  formData.append("file", uploadedFile);
+
+  try {
+    const response = await fetch("http://localhost:8000/upload-resume/", {
+      method: "POST",
+      body: formData,
+    });
+
+    if (!response.ok) throw new Error("Upload failed");
+
+    const result = await response.json();
+
+    setData({
+  filename: result.file_name,
+  name: result.name || "",
+  email: result.email || "",
+  phone: result.phone || "",
+  location: "", // You can improve this later
+  core_skills: result.core_skills || [],
+  soft_skills: result.soft_skills || [],
+  score: result.resume_rating || 0,
+  summary: result.summary || "",
+
+  experiences: (result.work_experience || []).map((exp) => ({
+    title: exp.job_title,
+    company: exp.company,
+    time: `${exp.start_date} - ${exp.end_date}`,
+    description: exp.description,
+  })),
+
+  education: (result.education || []).map((edu) => ({
+    degree: edu.degree,
+    institution: edu.institution,
+    year: edu.end_date?.split(" ")[1] || "N/A",  // extract year
+  })),
+
+  certifications: (result.certifications || []).map((cert) => ({
+    name: cert.name || "",
+    issuer: cert.issuer || "",
+    year: cert.year || "",
+  })),
+
+  projects: (result.projects || []).map((proj) => ({
+    title: proj.title || "",
+    description: proj.description || "",
+    tags: proj.tech ? proj.tech.split(",").map(t => t.trim()) : [],
+  })),
+
+  improvement_areas: result.resume_improvement_suggestions || [],
+  upskill_suggestions: result.upskill_suggestions || [],
+});
+
+
+  } catch (err) {
+    console.error(err);
+    alert("Something went wrong while uploading resume.");
+  } finally {
+    setLoading(false);
+  }
+};
 
   return (
     <div className="min-h-screen bg-gray-50 text-gray-800 flex flex-col">
@@ -81,7 +137,11 @@ function Home() {
 
             {activeTab === "history" && (
               <div className="mt-6">
-                <ResumeHistory resumeData={mockResumeHistoryData()} />
+                <ResumeHistory onView={(data) => {
+                  setFile({ name: data.filename });
+                  setData(data);
+                  setActiveTab("upload");
+                }} />
               </div>
             )}
           </div>

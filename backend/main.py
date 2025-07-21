@@ -1,83 +1,170 @@
 from fastapi import FastAPI, UploadFile, File, Depends, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse
 from sqlalchemy.orm import Session
-from typing import List
 import os
 import shutil
 from uuid import uuid4
+import json
+from datetime import datetime
 
-from . import database, models, resume_parser
-from .llm_utils import generate_improvement_suggestions, generate_upskill_suggestions
+from backend import database, models
+from backend.resume_parser import parse_resume
+from backend.models import Resume, ResumeRecord
 
 app = FastAPI()
 
-# CORS
+# ------------------- CORS -------------------
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:3000"],
-    allow_credentials=True,
+    allow_origins=["*"],
+    allow_credentials=False,
     allow_methods=["*"],
     allow_headers=["*"],
 )
 
 get_db = database.get_db
 
-
+# ------------------- Upload & Analyze -------------------
 @app.post("/upload-resume/")
 async def upload_resume(file: UploadFile = File(...), db: Session = Depends(get_db)):
-    # Save uploaded file temporarily
-    temp_filename = f"temp_{uuid4()}.pdf"
-    temp_path = os.path.join("backend", "temp_uploads", temp_filename)
-    os.makedirs(os.path.dirname(temp_path), exist_ok=True)
+    try:
+        temp_filename = f"temp_{uuid4()}.pdf"
+        temp_path = os.path.join("backend", "temp_uploads", temp_filename)
+        os.makedirs(os.path.dirname(temp_path), exist_ok=True)
 
-    with open(temp_path, "wb") as buffer:
-        shutil.copyfileobj(file.file, buffer)
+        with open(temp_path, "wb") as buffer:
+            shutil.copyfileobj(file.file, buffer)
 
-    # Parse resume content
-    text = resume_parser.extract_text_from_pdf(temp_path)
-    name = resume_parser.extract_name(text)
-    email = resume_parser.extract_email(text)
-    phone = resume_parser.extract_phone(text)
-    core_skills = resume_parser.extract_skills(text)
-    soft_skills = resume_parser.extract_soft_skills(text)
+        # Parse resume
+        result = parse_resume(temp_path)
 
-    # LLM suggestions
-    improvement_areas = generate_improvement_suggestions(text)
-    upskill_suggestions = generate_upskill_suggestions(core_skills)
+        # Save full resume to main table
+        resume_entry = models.Resume(
+            name=result.get("name", ""),
+            email=result.get("email", ""),
+            phone=result.get("phone", ""),
+            linkedin=result.get("linkedin", ""),
+            github=result.get("github", ""),
+            summary=result.get("summary", ""),
+            work_experience=json.dumps(result.get("work_experience", [])),
+            education=json.dumps(result.get("education", [])),
+            certifications=json.dumps(result.get("certifications", [])),
+            projects=json.dumps(result.get("projects", [])),
+            core_skills=json.dumps(result.get("core_skills", [])),
+            soft_skills=json.dumps(result.get("soft_skills", [])),
+            languages=json.dumps(result.get("languages", [])),
+            achievements=json.dumps(result.get("achievements", [])),
+            awards=json.dumps(result.get("awards", [])),
+            interests=json.dumps(result.get("interests", [])),
+            resume_improvement_suggestions=json.dumps(result.get("resume_improvement_suggestions", [])),
+            file_name=file.filename
+        )
+        db.add(resume_entry)
+        db.commit()
+        db.refresh(resume_entry)
 
-    # Save to DB
-    resume_entry = models.Resume(
-        name=name,
-        email=email,
-        phone=phone,
-        file_name=file.filename,
-        core_skills=core_skills,
-        soft_skills=soft_skills,
-        resume_rating=len(core_skills) + 7,  # Dummy rating logic for now
-        improvement_areas=improvement_areas,
-        upskill_suggestions=upskill_suggestions
-    )
-    db.add(resume_entry)
-    db.commit()
-    db.refresh(resume_entry)
+        # Save short record to history table
+        score = result.get("resume_rating", 0)
+        history_entry = models.ResumeRecord(
+            resume_name=file.filename,
+            candidate_name=result.get("name", ""),
+            candidate_email=result.get("email", ""),
+            candidate_phone=result.get("phone", ""),
+            ai_score=score if isinstance(score, (int, float)) else 0,
+            top_skills=json.dumps(result.get("core_skills", [])),
+            full_analysis=json.dumps(result)  # 🔥 ADD THIS LINE
+        )   
+        db.add(history_entry)
+        db.commit()
 
-    # Delete temp file
-    os.remove(temp_path)
+        os.remove(temp_path)
 
-    return {
-        "id": resume_entry.id,
-        "name": name,
-        "email": email,
-        "phone": phone,
-        "file_name": file.filename,
-        "core_skills": core_skills,
-        "soft_skills": soft_skills,
-        "resume_rating": resume_entry.resume_rating,
-        "improvement_areas": improvement_areas,
-        "upskill_suggestions": upskill_suggestions
-    }
+        return {
+            "id": resume_entry.id,
+            **result,
+            "file_name": file.filename,
+            "upload_date": str(resume_entry.upload_date)
+        }
+
+    except Exception as e:
+        print("🔥 Upload Resume Error:", e)
+        raise HTTPException(status_code=500, detail="Internal Server Error")
 
 
+# ------------------- Resume History Summary -------------------
+@app.get("/history/")
+def get_resume_history(db: Session = Depends(get_db)):
+    try:
+        records = db.query(models.ResumeRecord).order_by(models.ResumeRecord.upload_date.desc()).all()
+        print("Fetched records:", records)
+
+        total = len(records)
+        average = round(sum(r.ai_score for r in records) / total, 2) if total else 0
+        top_score = max((r.ai_score for r in records), default=0)
+        current_month = datetime.now().month
+        this_month_count = len([r for r in records if r.upload_date.month == current_month])
+
+        resumes = []
+
+        for r in records:
+            matching_resume = db.query(models.Resume).filter(models.Resume.file_name == r.resume_name).first()
+            print("Matching resume for:", r.resume_name, "==>", matching_resume)
+
+            # Check if top_skills is valid JSON
+            try:
+                top_skills = json.loads(r.top_skills)
+            except json.JSONDecodeError:
+                print("Error decoding top_skills for:", r.resume_name)
+                top_skills = []
+
+            resumes.append({
+                "resumeName": r.resume_name,
+                "candidateName": r.candidate_name,
+                "candidateEmail": r.candidate_email,
+                "candidatePhone": r.candidate_phone,
+                "uploadDate": r.upload_date.strftime("%Y-%m-%d"),
+                "aiScore": r.ai_score,
+                "topSkills": top_skills,
+                "analysisData": (
+                    {
+                        "name": matching_resume.name,
+                        "email": matching_resume.email,
+                        "phone": matching_resume.phone,
+                        "linkedin": matching_resume.linkedin,
+                        "github": matching_resume.github,
+                        "summary": matching_resume.summary,
+                        "work_experience": json.loads(matching_resume.work_experience),
+                        "education": json.loads(matching_resume.education),
+                        "certifications": json.loads(matching_resume.certifications),
+                        "projects": json.loads(matching_resume.projects),
+                        "core_skills": json.loads(matching_resume.core_skills),
+                        "soft_skills": json.loads(matching_resume.soft_skills),
+                        "languages": json.loads(matching_resume.languages),
+                        "achievements": json.loads(matching_resume.achievements),
+                        "awards": json.loads(matching_resume.awards),
+                        "interests": json.loads(matching_resume.interests),
+                        "resume_improvement_suggestions": json.loads(matching_resume.resume_improvement_suggestions),
+                        "file_name": matching_resume.file_name,
+                        "upload_date": str(matching_resume.upload_date),
+                        "score": r.ai_score
+                    } if matching_resume else None
+                )
+            })
+
+        return {
+            "totalResumes": total,
+            "averageRating": average,
+            "thisMonth": this_month_count,
+            "topScore": top_score,
+            "resumes": resumes
+        }
+
+    except Exception as e:
+        print("🔥 Error in /history/:", str(e))
+        raise HTTPException(status_code=500, detail="Internal Server Error")
+
+# ------------------- Get All Resumes -------------------
 @app.get("/resumes/")
 def get_all_resumes(db: Session = Depends(get_db)):
     resumes = db.query(models.Resume).order_by(models.Resume.upload_date.desc()).all()
@@ -88,12 +175,13 @@ def get_all_resumes(db: Session = Depends(get_db)):
             "email": resume.email,
             "phone": resume.phone,
             "file_name": resume.file_name,
-            "upload_date": resume.upload_date
+            "upload_date": str(resume.upload_date)
         }
         for resume in resumes
     ]
 
 
+# ------------------- Resume Details -------------------
 @app.get("/resumes/{resume_id}")
 def get_resume_details(resume_id: int, db: Session = Depends(get_db)):
     resume = db.query(models.Resume).filter(models.Resume.id == resume_id).first()
@@ -105,11 +193,60 @@ def get_resume_details(resume_id: int, db: Session = Depends(get_db)):
         "name": resume.name,
         "email": resume.email,
         "phone": resume.phone,
+        "linkedin": resume.linkedin,
+        "github": resume.github,
+        "summary": resume.summary,
+        "work_experience": json.loads(resume.work_experience),
+        "education": json.loads(resume.education),
+        "certifications": json.loads(resume.certifications),
+        "projects": json.loads(resume.projects),
+        "core_skills": json.loads(resume.core_skills),
+        "soft_skills": json.loads(resume.soft_skills),
+        "languages": json.loads(resume.languages),
+        "achievements": json.loads(resume.achievements),
+        "awards": json.loads(resume.awards),
+        "interests": json.loads(resume.interests),
+        "resume_improvement_suggestions": json.loads(resume.resume_improvement_suggestions),
         "file_name": resume.file_name,
-        "core_skills": resume.core_skills,
-        "soft_skills": resume.soft_skills,
-        "resume_rating": resume.resume_rating,
-        "improvement_areas": resume.improvement_areas,
-        "upskill_suggestions": resume.upskill_suggestions,
-        "upload_date": resume.upload_date
+        "upload_date": str(resume.upload_date)
+    }
+
+# ------------------- Resume Delete -------------------
+@app.delete("/history/{filename}")
+def delete_resume(filename: str, db: Session = Depends(get_db)):
+    resume = db.query(ResumeRecord).filter(ResumeRecord.resume_name == filename).first()
+    if resume:
+        db.delete(resume)
+        db.commit()
+        return JSONResponse(content={"message": "Deleted successfully"})
+    return JSONResponse(status_code=404, content={"error": "Resume not found"})
+
+# ------------------- Resume by Filename -------------------
+@app.get("/resume-by-filename/{filename}")
+def get_resume_by_filename(filename: str, db: Session = Depends(get_db)):
+    resume = db.query(models.Resume).filter(models.Resume.file_name == filename).first()
+    if not resume:
+        raise HTTPException(status_code=404, detail="Resume not found")
+
+    return {
+        "id": resume.id,
+        "name": resume.name,
+        "email": resume.email,
+        "phone": resume.phone,
+        "linkedin": resume.linkedin,
+        "github": resume.github,
+        "summary": resume.summary,
+        "work_experience": json.loads(resume.work_experience),
+        "education": json.loads(resume.education),
+        "certifications": json.loads(resume.certifications),
+        "projects": json.loads(resume.projects),
+        "core_skills": json.loads(resume.core_skills),
+        "soft_skills": json.loads(resume.soft_skills),
+        "languages": json.loads(resume.languages),
+        "achievements": json.loads(resume.achievements),
+        "awards": json.loads(resume.awards),
+        "interests": json.loads(resume.interests),
+        "resume_improvement_suggestions": json.loads(resume.resume_improvement_suggestions),
+        "file_name": resume.file_name,
+        "upload_date": str(resume.upload_date)
     }
