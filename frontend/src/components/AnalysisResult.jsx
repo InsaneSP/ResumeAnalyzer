@@ -50,7 +50,8 @@ const AnalysisResult = ({ data }) => {
   };
 
   const handleNewAnalysis = () => {
-    navigate("/", { replace: true });
+    // navigate("/", { replace: true });
+    window.location.replace("/");
   };
 
   return (
@@ -216,12 +217,12 @@ const OtherSections = ({ data }) => (
       colorClasses="bg-red-100 text-red-700"
       icon={<FaChartLine className="text-red-600 mr-2" />}
     />
-    <TagSection
+    {/* <TagSection
       title="Upskill Recommendations"
       items={Array.isArray(data?.upskill_suggestions) ? data.upskill_suggestions : []}
       colorClasses="bg-teal-100 text-teal-700"
       icon={<FaGraduationCap className="text-teal-600 mr-2" />}
-    />
+    /> */}
   </>
 );
 

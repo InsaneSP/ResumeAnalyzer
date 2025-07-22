@@ -63,42 +63,47 @@ const ResumeHistory = ({ onView }) => {
           <table className="min-w-full table-auto">
             <thead className="bg-gray-100">
               <tr>
-                <th className="px-4 py-3 text-left text-sm font-semibold text-gray-700">Resume Details</th>
-                <th className="px-4 py-3 text-left text-sm font-semibold text-gray-700">Candidate Info</th>
-                <th className="px-4 py-3 text-left text-sm font-semibold text-gray-700">Upload Date</th>
-                <th className="px-4 py-3 text-left text-sm font-semibold text-gray-700">AI Score</th>
-                <th className="px-4 py-3 text-left text-sm font-semibold text-gray-700">Top Skills</th>
-                <th className="px-4 py-3 text-left text-sm font-semibold text-gray-700">Actions</th>
+                <th className="px-4 py-3 text-left text-sm font-semibold text-gray-700 whitespace-nowrap">Resume Details</th>
+                <th className="px-4 py-3 text-left text-sm font-semibold text-gray-700 whitespace-nowrap">Candidate Info</th>
+                <th className="px-4 py-3 text-left text-sm font-semibold text-gray-700 whitespace-nowrap">Upload Date</th>
+                <th className="px-4 py-3 text-left text-sm font-semibold text-gray-700 whitespace-nowrap">AI Score</th>
+                <th className="px-4 py-3 text-left text-sm font-semibold text-gray-700 whitespace-nowrap">Top Skills</th>
+                <th className="px-4 py-3 text-left text-sm font-semibold text-gray-700 whitespace-nowrap">Actions</th>
               </tr>
             </thead>
             <tbody>
               {resumeData.resumes.map((resume, idx) => (
                 <tr key={idx} className="border-b hover:bg-gray-50">
-                  <td className="px-4 py-4 text-sm font-medium text-gray-800">
+                  <td className="px-4 py-4 text-sm font-medium text-gray-800 whitespace-nowrap">
                     <div className="flex items-center space-x-3">
                       <FaFilePdf className="text-blue-600" />
                       <span>{resume.resumeName}</span>
                     </div>
                   </td>
-                  <td className="px-4 py-4 text-sm text-gray-600">
+                  <td className="px-4 py-4 text-sm text-gray-600 whitespace-nowrap">
                     <p>{resume.candidateName}</p>
                     <p>{resume.candidateEmail}</p>
                     <p>{resume.candidatePhone}</p>
                   </td>
-                  <td className="px-4 py-4 text-sm text-gray-600">{resume.uploadDate}</td>
-                  <td className="px-4 py-4 text-sm">
+                  <td className="px-4 py-4 text-sm text-gray-600 whitespace-nowrap">{resume.uploadDate}</td>
+                  <td className="px-4 py-4 text-sm whitespace-nowrap">
                     <span className={`px-3 py-1 rounded-full ${getScoreColor(resume.aiScore)}`}>
                       {resume.aiScore} / 10
                     </span>
                   </td>
                   <td className="px-4 py-4 text-sm text-gray-600">
-                    {resume.topSkills.map((skill, idx) => (
-                      <span key={idx} className="text-xs text-blue-500 bg-blue-100 rounded-full px-2 py-1 mr-2">
-                        {skill}
-                      </span>
-                    ))}
+                    <div className="flex flex-wrap gap-2">
+                      {resume.topSkills.map((skill, idx) => (
+                        <span
+                          key={idx}
+                          className="text-xs text-blue-500 bg-blue-100 rounded-full px-2 py-1 whitespace-nowrap"
+                        >
+                          {skill}
+                        </span>
+                      ))}
+                    </div>
                   </td>
-                  <td className="px-4 py-4 text-sm flex items-center gap-4 justify-start">
+                  <td className="px-4 py-4 text-sm flex items-center gap-4 justify-start whitespace-nowrap">
                     <button
                       className="text-blue-500 hover:text-blue-700 flex items-center gap-2"
                       onClick={async () => {
@@ -131,18 +136,41 @@ const ResumeHistory = ({ onView }) => {
   );
 };
 
+// Tailwind-safe static class mapping
+const colorClasses = {
+  blue: {
+    bg: "bg-blue-500",
+    iconBg: "bg-blue-700",
+  },
+  green: {
+    bg: "bg-green-500",
+    iconBg: "bg-green-700",
+  },
+  purple: {
+    bg: "bg-purple-500",
+    iconBg: "bg-purple-700",
+  },
+  orange: {
+    bg: "bg-orange-500",
+    iconBg: "bg-orange-700",
+  },
+};
+
 // Reusable Stat Card
-const StatCard = ({ title, value, icon, color }) => (
-  <div className={`bg-${color}-500 text-white p-6 rounded-lg flex items-center justify-between`}>
-    <div>
-      <h3 className="text-xl font-semibold">{title}</h3>
-      <p className="text-3xl">{value}</p>
+const StatCard = ({ title, value, icon, color }) => {
+  const classes = colorClasses[color] || colorClasses.blue;
+  return (
+    <div className={`${classes.bg} text-white p-6 rounded-lg flex items-center justify-between`}>
+      <div>
+        <h3 className="text-xl font-semibold">{title}</h3>
+        <p className="text-3xl">{value}</p>
+      </div>
+      <div className={`${classes.iconBg} p-4 rounded-full`}>
+        {icon}
+      </div>
     </div>
-    <div className={`bg-${color}-700 p-4 rounded-full`}>
-      {icon}
-    </div>
-  </div>
-);
+  );
+};
 
 // Score badge color
 const getScoreColor = (score) => {
