@@ -13,14 +13,48 @@ import {
   FaShareAlt,
 } from 'react-icons/fa';
 import ScoreCard from './ScoreCard';
+import { useRef } from 'react';
+import { useNavigate } from "react-router-dom";
+import html2pdf from 'html2pdf.js';
 
 const AnalysisResult = ({ data }) => {
   const initials = data?.name
     ? data.name.split(" ").map((n) => n[0]).join("").toUpperCase()
     : "NA";
+  const analysisRef = useRef();
+  const navigate = useNavigate();
+
+  const handleDownload = () => {
+    if (!analysisRef.current) return;
+
+    const opt = {
+      margin: 0.5,
+      filename: `${data?.name || 'resume'}_analysis.pdf`,
+      image: { type: 'jpeg', quality: 0.98 },
+      html2canvas: { scale: 2 },
+      jsPDF: { unit: 'in', format: 'letter', orientation: 'portrait' }
+    };
+
+    html2pdf().set(opt).from(analysisRef.current).save();
+  };
+
+  const handleViewResources = () => {
+  window.open('https://www.coursera.org/search?query=resume%20writing', '_blank');
+};
+
+  const handleShare = () => {
+    const url = window.location.href; // Share current analysis URL
+    navigator.clipboard.writeText(url)
+      .then(() => alert("🔗 Link copied to clipboard!"))
+      .catch(() => alert("❌ Failed to copy link"));
+  };
+
+  const handleNewAnalysis = () => {
+    navigate("/", { replace: true });
+  };
 
   return (
-    <div className="space-y-10">
+    <div ref={analysisRef} className="space-y-10">
       <header className="flex justify-between items-center">
         <div>
           <h2 className="text-3xl font-bold text-gray-800">Analysis Complete</h2>
@@ -29,13 +63,16 @@ const AnalysisResult = ({ data }) => {
           </p>
         </div>
         <div className="flex gap-3">
-          <button className="bg-gray-200 hover:bg-gray-300 px-4 py-2 rounded text-sm">
+          <button
+            onClick={handleDownload}
+            className="bg-gray-200 hover:bg-gray-300 px-4 py-2 rounded text-sm"
+          >
             <FaDownload className="inline mr-2" /> Export PDF
           </button>
-          <button className="bg-gray-200 hover:bg-gray-300 px-4 py-2 rounded text-sm">
-            <FaShareAlt className="inline mr-2" /> Share
-          </button>
-          <button className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded text-sm">
+          <button
+            onClick={handleNewAnalysis}
+            className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded text-sm"
+          >
             <FaSyncAlt className="inline mr-2" /> New Analysis
           </button>
         </div>
@@ -81,11 +118,17 @@ const AnalysisResult = ({ data }) => {
           Use these insights to create a more compelling resume that stands out to employers.
         </p>
         <div className="flex gap-3 justify-center">
-          <button className="bg-blue-600 hover:bg-blue-700 text-white px-6 py-2 rounded-md text-sm font-semibold shadow-md flex items-center gap-2">
+          <button
+            onClick={handleDownload}
+            className="bg-blue-600 hover:bg-blue-700 text-white px-6 py-2 rounded-md text-sm font-semibold shadow-md flex items-center gap-2"
+          >
             <FaDownload className="text-lg" />
             Download Analysis Report
           </button>
-          <button className="bg-white border border-gray-300 hover:bg-gray-100 text-gray-700 px-6 py-2 rounded-md text-sm font-semibold shadow-md flex items-center gap-2">
+          <button
+            onClick={handleViewResources}
+            className="bg-white border border-gray-300 hover:bg-gray-100 text-gray-700 px-6 py-2 rounded-md text-sm font-semibold shadow-md flex items-center gap-2"
+          >
             <FaBook className="text-lg" />
             View Learning Resources
           </button>

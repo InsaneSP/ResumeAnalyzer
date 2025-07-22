@@ -1,5 +1,5 @@
 from sqlalchemy import Column, Float, Integer, String, Text, DateTime, JSON
-from sqlalchemy.dialects.postgresql import JSONB
+from sqlalchemy.dialects.postgresql import JSONB, JSON
 from sqlalchemy.sql import func
 from .database import Base
 
@@ -24,6 +24,7 @@ class Resume(Base):
     awards = Column(JSONB)
     interests = Column(JSONB)
     resume_improvement_suggestions = Column(JSONB)
+    upskill_suggestions = Column(JSON)
     file_name = Column(String)
     upload_date = Column(DateTime(timezone=True), server_default=func.now())
 
