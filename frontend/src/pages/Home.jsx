@@ -63,7 +63,11 @@ function Home() {
       projects: (result.projects || []).map((proj) => ({
         title: proj.title || "",
         description: proj.description || "",
-        tags: proj.tech ? proj.tech.split(",").map(t => t.trim()) : [],
+        tags: typeof proj.tech === "string"
+        ? proj.tech.split(",").map((t) => t.trim())
+        : Array.isArray(proj.tech)
+        ? proj.tech.map((t) => t.toString().trim())
+        : [],
       })),
 
       improvement_areas: result.resume_improvement_suggestions || [],
